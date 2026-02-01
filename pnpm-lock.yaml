@@ -316,6 +316,12 @@ importers:
         specifier: workspace:*
         version: link:../..
 
+  extensions/lark:
+    devDependencies:
+      openclaw:
+        specifier: workspace:*
+        version: link:../..
+
   extensions/line:
     devDependencies:
       openclaw:

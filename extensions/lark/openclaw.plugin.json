@@ -1,0 +1,9 @@
+{
+  "id": "lark",
+  "channels": ["lark"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

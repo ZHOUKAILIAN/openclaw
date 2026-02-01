@@ -1,0 +1,32 @@
+{
+  "name": "@openclaw/lark",
+  "version": "2026.2.1",
+  "description": "OpenClaw Lark/Feishu channel plugin",
+  "type": "module",
+  "devDependencies": {
+    "openclaw": "workspace:*"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "channel": {
+      "id": "lark",
+      "label": "Lark",
+      "selectionLabel": "Lark (Feishu Bot)",
+      "docsPath": "/channels/lark",
+      "docsLabel": "lark",
+      "blurb": "Lark/Feishu bot via Open Platform event subscription.",
+      "aliases": [
+        "feishu"
+      ],
+      "order": 70,
+      "quickstartAllowFrom": true
+    },
+    "install": {
+      "npmSpec": "@openclaw/lark",
+      "localPath": "extensions/lark",
+      "defaultChoice": "npm"
+    }
+  }
+}
