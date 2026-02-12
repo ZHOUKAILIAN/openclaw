@@ -1,25 +1,22 @@
+import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { ImageContent } from "@mariozechner/pi-ai";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-
-import type { AgentTool } from "@mariozechner/pi-agent-core";
-import type { ImageContent } from "@mariozechner/pi-ai";
 import type { ThinkLevel } from "../../auto-reply/thinking.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { CliBackendConfig } from "../../config/types.js";
-import { runExec } from "../../process/exec.js";
 import type { EmbeddedContextFile } from "../pi-embedded-helpers.js";
-import { buildSystemPromptParams } from "../system-prompt-params.js";
-import { resolveDefaultModelForAgent } from "../model-selection.js";
-import { buildAgentSystemPrompt } from "../system-prompt.js";
+import { runExec } from "../../process/exec.js";
 import { buildTtsSystemPromptHint } from "../../tts/tts.js";
+import { escapeRegExp, isRecord } from "../../utils.js";
+import { resolveDefaultModelForAgent } from "../model-selection.js";
+import { detectRuntimeShell } from "../shell-utils.js";
+import { buildSystemPromptParams } from "../system-prompt-params.js";
+import { buildAgentSystemPrompt } from "../system-prompt.js";
 
 const CLI_RUN_QUEUE = new Map<string, Promise<unknown>>();
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 export async function cleanupResumeProcesses(
   backend: CliBackendConfig,
@@ -43,7 +40,7 @@ export async function cleanupResumeProcesses(
   const resumeTokens = resumeArgs.map((arg) => arg.replaceAll("{sessionId}", sessionId));
   const pattern = [commandToken, ...resumeTokens]
     .filter(Boolean)
-    .map((token) => escapeRegex(token))
+    .map((token) => escapeRegExp(token))
     .join(".*");
   if (!pattern) {
     return;
@@ -95,9 +92,9 @@ function buildSessionMatchers(backend: CliBackendConfig): RegExp[] {
 
 function tokenToRegex(token: string): string {
   if (!token.includes("{sessionId}")) {
-    return escapeRegex(token);
+    return escapeRegExp(token);
   }
-  const parts = token.split("{sessionId}").map((part) => escapeRegex(part));
+  const parts = token.split("{sessionId}").map((part) => escapeRegExp(part));
   return parts.join("\\S+");
 }
 
@@ -227,6 +224,7 @@ export function buildSystemPrompt(params: {
       node: process.version,
       model: params.modelDisplay,
       defaultModel: defaultModelLabel,
+      shell: detectRuntimeShell(),
     },
   });
   const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
@@ -246,6 +244,7 @@ export function buildSystemPrompt(params: {
     userTimeFormat,
     contextFiles: params.contextFiles,
     ttsHint,
+    memoryCitationsMode: params.config?.memory?.citations,
   });
 }
 
@@ -279,10 +278,6 @@ function toUsage(raw: Record<string, unknown>): CliUsage | undefined {
     return undefined;
   }
   return { input, output, cacheRead, cacheWrite, total };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function collectText(value: unknown): string {

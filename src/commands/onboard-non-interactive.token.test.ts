@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-
 import { describe, expect, it, vi } from "vitest";
 
 describe("onboard (non-interactive): token auth", () => {
@@ -31,7 +30,8 @@ describe("onboard (non-interactive): token auth", () => {
     process.env.OPENCLAW_CONFIG_PATH = path.join(tempHome, "openclaw.json");
     vi.resetModules();
 
-    const token = `sk-ant-oat01-${"a".repeat(80)}`;
+    const cleanToken = `sk-ant-oat01-${"a".repeat(80)}`;
+    const token = `${cleanToken.slice(0, 30)}\r${cleanToken.slice(30)}`;
 
     const runtime = {
       log: () => {},
@@ -75,7 +75,7 @@ describe("onboard (non-interactive): token auth", () => {
       expect(profile?.type).toBe("token");
       if (profile?.type === "token") {
         expect(profile.provider).toBe("anthropic");
-        expect(profile.token).toBe(token);
+        expect(profile.token).toBe(cleanToken);
       }
     } finally {
       await fs.rm(tempHome, { recursive: true, force: true });

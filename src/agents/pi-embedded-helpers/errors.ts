@@ -1,8 +1,10 @@
 import type { AssistantMessage } from "@mariozechner/pi-ai";
-
 import type { OpenClawConfig } from "../../config/config.js";
-import { formatSandboxToolPolicyBlockedMessage } from "../sandbox.js";
 import type { FailoverReason } from "./types.js";
+import { formatSandboxToolPolicyBlockedMessage } from "../sandbox.js";
+
+export const BILLING_ERROR_USER_MESSAGE =
+  "⚠️ API provider returned a billing error — your API key has run out of credits or has an insufficient balance. Check your provider's billing dashboard and top up or switch to a different API key.";
 
 export function isContextOverflowError(errorMessage?: string): boolean {
   if (!errorMessage) {
@@ -22,7 +24,7 @@ export function isContextOverflowError(errorMessage?: string): boolean {
     lower.includes("prompt is too long") ||
     lower.includes("exceeds model context window") ||
     (hasRequestSizeExceeds && hasContextWindow) ||
-    lower.includes("context overflow") ||
+    lower.includes("context overflow:") ||
     (lower.includes("413") && lower.includes("too large"))
   );
 }
@@ -38,6 +40,12 @@ export function isLikelyContextOverflowError(errorMessage?: string): boolean {
   if (CONTEXT_WINDOW_TOO_SMALL_RE.test(errorMessage)) {
     return false;
   }
+  // Rate limit errors can match the broad CONTEXT_OVERFLOW_HINT_RE pattern
+  // (e.g., "request reached organization TPD rate limit" matches request.*limit).
+  // Exclude them before checking context overflow heuristics.
+  if (isRateLimitErrorMessage(errorMessage)) {
+    return false;
+  }
   if (isContextOverflowError(errorMessage)) {
     return true;
   }
@@ -48,16 +56,18 @@ export function isCompactionFailureError(errorMessage?: string): boolean {
   if (!errorMessage) {
     return false;
   }
-  if (!isContextOverflowError(errorMessage)) {
-    return false;
-  }
   const lower = errorMessage.toLowerCase();
-  return (
+  const hasCompactionTerm =
     lower.includes("summarization failed") ||
     lower.includes("auto-compaction") ||
     lower.includes("compaction failed") ||
-    lower.includes("compaction")
-  );
+    lower.includes("compaction");
+  if (!hasCompactionTerm) {
+    return false;
+  }
+  // For compaction failures, also accept "context overflow" without colon
+  // since the error message itself describes a compaction/summarization failure
+  return isContextOverflowError(errorMessage) || lower.includes("context overflow");
 }
 
 const ERROR_PAYLOAD_PREFIX_RE =
@@ -65,7 +75,13 @@ const ERROR_PAYLOAD_PREFIX_RE =
 const FINAL_TAG_RE = /<\s*\/?\s*final\s*>/gi;
 const ERROR_PREFIX_RE =
   /^(?:error|api\s*error|openai\s*error|anthropic\s*error|gateway\s*error|request failed|failed|exception)[:\s-]+/i;
+const CONTEXT_OVERFLOW_ERROR_HEAD_RE =
+  /^(?:context overflow:|request_too_large\b|request size exceeds\b|request exceeds the maximum size\b|context length exceeded\b|maximum context length\b|prompt is too long\b|exceeds model context window\b)/i;
 const HTTP_STATUS_PREFIX_RE = /^(?:http\s*)?(\d{3})\s+(.+)$/i;
+const HTTP_STATUS_CODE_PREFIX_RE = /^(?:http\s*)?(\d{3})(?:\s+([\s\S]+))?$/i;
+const HTML_ERROR_PREFIX_RE = /^\s*(?:<!doctype\s+html\b|<html\b)/i;
+const CLOUDFLARE_HTML_ERROR_CODES = new Set([521, 522, 523, 524, 525, 526, 530]);
+const TRANSIENT_HTTP_ERROR_CODES = new Set([500, 502, 503, 521, 522, 523, 524, 529]);
 const HTTP_ERROR_HINTS = [
   "error",
   "bad request",
@@ -83,6 +99,50 @@ const HTTP_ERROR_HINTS = [
   "too many requests",
   "permission",
 ];
+
+function extractLeadingHttpStatus(raw: string): { code: number; rest: string } | null {
+  const match = raw.match(HTTP_STATUS_CODE_PREFIX_RE);
+  if (!match) {
+    return null;
+  }
+  const code = Number(match[1]);
+  if (!Number.isFinite(code)) {
+    return null;
+  }
+  return { code, rest: (match[2] ?? "").trim() };
+}
+
+export function isCloudflareOrHtmlErrorPage(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  const status = extractLeadingHttpStatus(trimmed);
+  if (!status || status.code < 500) {
+    return false;
+  }
+
+  if (CLOUDFLARE_HTML_ERROR_CODES.has(status.code)) {
+    return true;
+  }
+
+  return (
+    status.code < 600 && HTML_ERROR_PREFIX_RE.test(status.rest) && /<\/html>/i.test(status.rest)
+  );
+}
+
+export function isTransientHttpError(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const status = extractLeadingHttpStatus(trimmed);
+  if (!status) {
+    return false;
+  }
+  return TRANSIENT_HTTP_ERROR_CODES.has(status.code);
+}
 
 function stripFinalTagsFromText(text: string): string {
   if (!text) {
@@ -121,6 +181,9 @@ function collapseConsecutiveDuplicateBlocks(text: string): string {
 }
 
 function isLikelyHttpErrorText(raw: string): boolean {
+  if (isCloudflareOrHtmlErrorPage(raw)) {
+    return true;
+  }
   const match = raw.match(HTTP_STATUS_PREFIX_RE);
   if (!match) {
     return false;
@@ -131,6 +194,18 @@ function isLikelyHttpErrorText(raw: string): boolean {
   }
   const message = match[2].toLowerCase();
   return HTTP_ERROR_HINTS.some((hint) => message.includes(hint));
+}
+
+function shouldRewriteContextOverflowText(raw: string): boolean {
+  if (!isContextOverflowError(raw)) {
+    return false;
+  }
+  return (
+    isRawApiErrorPayload(raw) ||
+    isLikelyHttpErrorText(raw) ||
+    ERROR_PREFIX_RE.test(raw) ||
+    CONTEXT_OVERFLOW_ERROR_HEAD_RE.test(raw)
+  );
 }
 
 type ErrorPayload = Record<string, unknown>;
@@ -287,6 +362,11 @@ export function formatRawAssistantErrorForUi(raw?: string): string {
     return "LLM request failed with an unknown error.";
   }
 
+  const leadingStatus = extractLeadingHttpStatus(trimmed);
+  if (leadingStatus && isCloudflareOrHtmlErrorPage(trimmed)) {
+    return `The AI service is temporarily unavailable (HTTP ${leadingStatus.code}). Please try again in a moment.`;
+  }
+
   const httpMatch = trimmed.match(HTTP_STATUS_PREFIX_RE);
   if (httpMatch) {
     const rest = httpMatch[2].trim();
@@ -336,7 +416,7 @@ export function formatAssistantErrorText(
   if (isContextOverflowError(raw)) {
     return (
       "Context overflow: prompt too large for the model. " +
-      "Try again with less input or a larger-context model."
+      "Try /reset (or /new) to start a fresh session, or use a larger-context model."
     );
   }
 
@@ -352,6 +432,14 @@ export function formatAssistantErrorText(
     );
   }
 
+  if (isMissingToolCallInputError(raw)) {
+    return (
+      "Session history looks corrupted (tool call input missing). " +
+      "Use /new to start a fresh session. " +
+      "If this keeps happening, reset the session or delete the corrupted session transcript."
+    );
+  }
+
   const invalidRequest = raw.match(/"type":"invalid_request_error".*?"message":"([^"]+)"/);
   if (invalidRequest?.[1]) {
     return `LLM request rejected: ${invalidRequest[1]}`;
@@ -359,6 +447,10 @@ export function formatAssistantErrorText(
 
   if (isOverloadedErrorMessage(raw)) {
     return "The AI service is temporarily overloaded. Please try again in a moment.";
+  }
+
+  if (isBillingErrorMessage(raw)) {
+    return BILLING_ERROR_USER_MESSAGE;
   }
 
   if (isLikelyHttpErrorText(raw) || isRawApiErrorPayload(raw)) {
@@ -372,42 +464,51 @@ export function formatAssistantErrorText(
   return raw.length > 600 ? `${raw.slice(0, 600)}…` : raw;
 }
 
-export function sanitizeUserFacingText(text: string): string {
+export function sanitizeUserFacingText(text: string, opts?: { errorContext?: boolean }): string {
   if (!text) {
     return text;
   }
+  const errorContext = opts?.errorContext ?? false;
   const stripped = stripFinalTagsFromText(text);
   const trimmed = stripped.trim();
   if (!trimmed) {
     return stripped;
   }
 
-  if (/incorrect role information|roles must alternate/i.test(trimmed)) {
-    return (
-      "Message ordering conflict - please try again. " +
-      "If this persists, use /new to start a fresh session."
-    );
-  }
-
-  if (isContextOverflowError(trimmed)) {
-    return (
-      "Context overflow: prompt too large for the model. " +
-      "Try again with less input or a larger-context model."
-    );
-  }
-
-  if (isRawApiErrorPayload(trimmed) || isLikelyHttpErrorText(trimmed)) {
-    return formatRawAssistantErrorForUi(trimmed);
-  }
-
-  if (ERROR_PREFIX_RE.test(trimmed)) {
-    if (isOverloadedErrorMessage(trimmed) || isRateLimitErrorMessage(trimmed)) {
-      return "The AI service is temporarily overloaded. Please try again in a moment.";
+  // Only apply error-pattern rewrites when the caller knows this text is an error payload.
+  // Otherwise we risk swallowing legitimate assistant text that merely *mentions* these errors.
+  if (errorContext) {
+    if (/incorrect role information|roles must alternate/i.test(trimmed)) {
+      return (
+        "Message ordering conflict - please try again. " +
+        "If this persists, use /new to start a fresh session."
+      );
     }
-    if (isTimeoutErrorMessage(trimmed)) {
-      return "LLM request timed out.";
+
+    if (shouldRewriteContextOverflowText(trimmed)) {
+      return (
+        "Context overflow: prompt too large for the model. " +
+        "Try /reset (or /new) to start a fresh session, or use a larger-context model."
+      );
     }
-    return formatRawAssistantErrorForUi(trimmed);
+
+    if (isBillingErrorMessage(trimmed)) {
+      return BILLING_ERROR_USER_MESSAGE;
+    }
+
+    if (isRawApiErrorPayload(trimmed) || isLikelyHttpErrorText(trimmed)) {
+      return formatRawAssistantErrorForUi(trimmed);
+    }
+
+    if (ERROR_PREFIX_RE.test(trimmed)) {
+      if (isOverloadedErrorMessage(trimmed) || isRateLimitErrorMessage(trimmed)) {
+        return "The AI service is temporarily overloaded. Please try again in a moment.";
+      }
+      if (isTimeoutErrorMessage(trimmed)) {
+        return "LLM request timed out.";
+      }
+      return formatRawAssistantErrorForUi(trimmed);
+    }
   }
 
   return collapseConsecutiveDuplicateBlocks(stripped);
@@ -439,6 +540,7 @@ const ERROR_PATTERNS = {
     "insufficient credits",
     "credit balance",
     "plans & billing",
+    "insufficient balance",
   ],
   auth: [
     /invalid[_ ]?api[_ ]?key/,
@@ -465,6 +567,11 @@ const ERROR_PATTERNS = {
     "invalid request format",
   ],
 } as const;
+
+const TOOL_CALL_INPUT_MISSING_RE =
+  /tool_(?:use|call)\.(?:input|arguments).*?(?:field required|required)/i;
+const TOOL_CALL_INPUT_PATH_RE =
+  /messages\.\d+\.content\.\d+\.tool_(?:use|call)\.(?:input|arguments)/i;
 
 const IMAGE_DIMENSION_ERROR_RE =
   /image dimensions exceed max allowed size for many-image requests:\s*(\d+)\s*pixels/i;
@@ -494,16 +601,15 @@ export function isBillingErrorMessage(raw: string): boolean {
   if (!value) {
     return false;
   }
-  if (matchesErrorPatterns(value, ERROR_PATTERNS.billing)) {
-    return true;
+
+  return matchesErrorPatterns(value, ERROR_PATTERNS.billing);
+}
+
+export function isMissingToolCallInputError(raw: string): boolean {
+  if (!raw) {
+    return false;
   }
-  return (
-    value.includes("billing") &&
-    (value.includes("upgrade") ||
-      value.includes("credits") ||
-      value.includes("payment") ||
-      value.includes("plan"))
-  );
+  return TOOL_CALL_INPUT_MISSING_RE.test(raw) || TOOL_CALL_INPUT_PATH_RE.test(raw);
 }
 
 export function isBillingAssistantError(msg: AssistantMessage | undefined): boolean {
@@ -590,6 +696,10 @@ export function classifyFailoverReason(raw: string): FailoverReason | null {
   }
   if (isImageSizeError(raw)) {
     return null;
+  }
+  if (isTransientHttpError(raw)) {
+    // Treat transient 5xx provider failures as retryable transport issues.
+    return "timeout";
   }
   if (isRateLimitErrorMessage(raw)) {
     return "rate_limit";

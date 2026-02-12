@@ -1,14 +1,14 @@
 import type { OpenClawConfig } from "../config/config.js";
-import { loadConfig } from "../config/config.js";
-import { loadSessionStore, resolveStorePath } from "../config/sessions.js";
 import type {
   ExecApprovalForwardingConfig,
   ExecApprovalForwardTarget,
 } from "../config/types.approvals.js";
+import type { ExecApprovalDecision } from "./exec-approvals.js";
+import { loadConfig } from "../config/config.js";
+import { loadSessionStore, resolveStorePath } from "../config/sessions.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
 import { isDeliverableMessageChannel, normalizeMessageChannel } from "../utils/message-channel.js";
-import type { ExecApprovalDecision } from "./exec-approvals.js";
 import { deliverOutboundPayloads } from "./outbound/deliver.js";
 import { resolveSessionDeliveryTarget } from "./outbound/targets.js";
 
@@ -115,9 +115,27 @@ function buildTargetKey(target: ExecApprovalForwardTarget): string {
   return [channel, target.to, accountId, threadId].join(":");
 }
 
+function formatApprovalCommand(command: string): { inline: boolean; text: string } {
+  if (!command.includes("\n") && !command.includes("`")) {
+    return { inline: true, text: `\`${command}\`` };
+  }
+
+  let fence = "```";
+  while (command.includes(fence)) {
+    fence += "`";
+  }
+  return { inline: false, text: `${fence}\n${command}\n${fence}` };
+}
+
 function buildRequestMessage(request: ExecApprovalRequest, nowMs: number) {
   const lines: string[] = ["🔒 Exec approval required", `ID: ${request.id}`];
-  lines.push(`Command: ${request.request.command}`);
+  const command = formatApprovalCommand(request.request.command);
+  if (command.inline) {
+    lines.push(`Command: ${command.text}`);
+  } else {
+    lines.push("Command:");
+    lines.push(command.text);
+  }
   if (request.request.cwd) {
     lines.push(`CWD: ${request.request.cwd}`);
   }

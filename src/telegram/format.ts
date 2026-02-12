@@ -1,3 +1,4 @@
+import type { MarkdownTableMode } from "../config/types.base.js";
 import {
   chunkMarkdownIR,
   markdownToIR,
@@ -5,7 +6,6 @@ import {
   type MarkdownIR,
 } from "../markdown/ir.js";
 import { renderMarkdownWithMarkers } from "../markdown/render.js";
-import type { MarkdownTableMode } from "../config/types.base.js";
 
 export type TelegramFormattedChunk = {
   html: string;
@@ -45,6 +45,7 @@ function renderTelegramHtml(ir: MarkdownIR): string {
       strikethrough: { open: "<s>", close: "</s>" },
       code: { open: "<code>", close: "</code>" },
       code_block: { open: "<pre><code>", close: "</code></pre>" },
+      spoiler: { open: "<tg-spoiler>", close: "</tg-spoiler>" },
     },
     escapeText: escapeHtml,
     buildLink: buildTelegramLink,
@@ -57,6 +58,7 @@ export function markdownToTelegramHtml(
 ): string {
   const ir = markdownToIR(markdown ?? "", {
     linkify: true,
+    enableSpoilers: true,
     headingStyle: "none",
     blockquotePrefix: "",
     tableMode: options.tableMode,
@@ -82,6 +84,7 @@ export function markdownToTelegramChunks(
 ): TelegramFormattedChunk[] {
   const ir = markdownToIR(markdown ?? "", {
     linkify: true,
+    enableSpoilers: true,
     headingStyle: "none",
     blockquotePrefix: "",
     tableMode: options.tableMode,

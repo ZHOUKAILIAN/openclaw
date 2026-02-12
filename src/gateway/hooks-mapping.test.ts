@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-
 import { applyHookMappings, resolveHookMappings } from "./hooks-mapping.js";
 
 const baseUrl = new URL("http://127.0.0.1:18789/hooks/gmail");
@@ -150,6 +149,53 @@ describe("hooks mapping", () => {
     if (result?.ok) {
       expect(result.action.kind).toBe("agent");
       expect(result.action.message).toBe("Override subject: Hello");
+    }
+  });
+
+  it("passes agentId from mapping", async () => {
+    const mappings = resolveHookMappings({
+      mappings: [
+        {
+          id: "hooks-agent",
+          match: { path: "gmail" },
+          action: "agent",
+          messageTemplate: "Subject: {{messages[0].subject}}",
+          agentId: "hooks",
+        },
+      ],
+    });
+    const result = await applyHookMappings(mappings, {
+      payload: { messages: [{ subject: "Hello" }] },
+      headers: {},
+      url: baseUrl,
+      path: "gmail",
+    });
+    expect(result?.ok).toBe(true);
+    if (result?.ok && result.action?.kind === "agent") {
+      expect(result.action.agentId).toBe("hooks");
+    }
+  });
+
+  it("agentId is undefined when not set", async () => {
+    const mappings = resolveHookMappings({
+      mappings: [
+        {
+          id: "no-agent",
+          match: { path: "gmail" },
+          action: "agent",
+          messageTemplate: "Subject: {{messages[0].subject}}",
+        },
+      ],
+    });
+    const result = await applyHookMappings(mappings, {
+      payload: { messages: [{ subject: "Hello" }] },
+      headers: {},
+      url: baseUrl,
+      path: "gmail",
+    });
+    expect(result?.ok).toBe(true);
+    if (result?.ok && result.action?.kind === "agent") {
+      expect(result.action.agentId).toBeUndefined();
     }
   });
 

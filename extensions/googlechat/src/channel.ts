@@ -15,10 +15,10 @@ import {
   type ChannelDock,
   type ChannelMessageActionAdapter,
   type ChannelPlugin,
+  type ChannelStatusIssue,
   type OpenClawConfig,
 } from "openclaw/plugin-sdk";
 import { GoogleChatConfigSchema } from "openclaw/plugin-sdk";
-
 import {
   listGoogleChatAccountIds,
   resolveDefaultGoogleChatAccountId,
@@ -27,9 +27,9 @@ import {
 } from "./accounts.js";
 import { googlechatMessageActions } from "./actions.js";
 import { sendGoogleChatMessage, uploadGoogleChatAttachment, probeGoogleChat } from "./api.js";
+import { resolveGoogleChatWebhookPath, startGoogleChatMonitor } from "./monitor.js";
 import { googlechatOnboardingAdapter } from "./onboarding.js";
 import { getGoogleChatRuntime } from "./runtime.js";
-import { resolveGoogleChatWebhookPath, startGoogleChatMonitor } from "./monitor.js";
 import {
   isGoogleChatSpaceTarget,
   isGoogleChatUserTarget,
@@ -452,13 +452,14 @@ export const googlechatPlugin: ChannelPlugin<ResolvedGoogleChatAccount> = {
           (cfg.channels?.["googlechat"] as { mediaMaxMb?: number } | undefined)?.mediaMaxMb,
         accountId,
       });
-      const loaded = await runtime.channel.media.fetchRemoteMedia(mediaUrl, {
+      const loaded = await runtime.channel.media.fetchRemoteMedia({
+        url: mediaUrl,
         maxBytes: maxBytes ?? (account.config.mediaMaxMb ?? 20) * 1024 * 1024,
       });
       const upload = await uploadGoogleChatAttachment({
         account,
         space,
-        filename: loaded.filename ?? "attachment",
+        filename: loaded.fileName ?? "attachment",
         buffer: loaded.buffer,
         contentType: loaded.contentType,
       });
@@ -468,7 +469,7 @@ export const googlechatPlugin: ChannelPlugin<ResolvedGoogleChatAccount> = {
         text,
         thread,
         attachments: upload.attachmentUploadToken
-          ? [{ attachmentUploadToken: upload.attachmentUploadToken, contentName: loaded.filename }]
+          ? [{ attachmentUploadToken: upload.attachmentUploadToken, contentName: loaded.fileName }]
           : undefined,
       });
       return {
@@ -486,7 +487,7 @@ export const googlechatPlugin: ChannelPlugin<ResolvedGoogleChatAccount> = {
       lastStopAt: null,
       lastError: null,
     },
-    collectStatusIssues: (accounts) =>
+    collectStatusIssues: (accounts): ChannelStatusIssue[] =>
       accounts.flatMap((entry) => {
         const accountId = String(entry.accountId ?? DEFAULT_ACCOUNT_ID);
         const enabled = entry.enabled !== false;
@@ -494,7 +495,7 @@ export const googlechatPlugin: ChannelPlugin<ResolvedGoogleChatAccount> = {
         if (!enabled || !configured) {
           return [];
         }
-        const issues = [];
+        const issues: ChannelStatusIssue[] = [];
         if (!entry.audience) {
           issues.push({
             channel: "googlechat",

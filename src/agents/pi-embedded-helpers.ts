@@ -6,6 +6,7 @@ export {
   stripThoughtSignatures,
 } from "./pi-embedded-helpers/bootstrap.js";
 export {
+  BILLING_ERROR_USER_MESSAGE,
   classifyFailoverReason,
   formatRawAssistantErrorForUi,
   formatAssistantErrorText,
@@ -16,6 +17,7 @@ export {
   parseApiErrorInfo,
   sanitizeUserFacingText,
   isBillingErrorMessage,
+  isCloudflareOrHtmlErrorPage,
   isCloudCodeAssistFormatError,
   isCompactionFailureError,
   isContextOverflowError,
@@ -28,6 +30,7 @@ export {
   isRawApiErrorPayload,
   isRateLimitAssistantError,
   isRateLimitErrorMessage,
+  isTransientHttpError,
   isTimeoutErrorMessage,
   parseImageDimensionError,
   parseImageSizeError,

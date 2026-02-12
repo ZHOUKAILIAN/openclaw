@@ -3,7 +3,6 @@ import { existsSync, statSync } from "node:fs";
 import fs from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-
 import { sliceUtf16Safe } from "../utils.js";
 import { assertSandboxPath } from "./sandbox-paths.js";
 import { killProcessTree } from "./shell-utils.js";
@@ -147,7 +146,10 @@ function safeCwd() {
   }
 }
 
-export function clampNumber(
+/**
+ * Clamp a number within min/max bounds, using defaultValue if undefined or NaN.
+ */
+export function clampWithDefault(
   value: number | undefined,
   defaultValue: number,
   min: number,
@@ -243,19 +245,6 @@ function stripQuotes(value: string): string {
     return trimmed.slice(1, -1);
   }
   return trimmed;
-}
-
-export function formatDuration(ms: number) {
-  if (ms < 1000) {
-    return `${ms}ms`;
-  }
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const rem = seconds % 60;
-  return `${minutes}m${rem.toString().padStart(2, "0")}s`;
 }
 
 export function pad(str: string, width: number) {

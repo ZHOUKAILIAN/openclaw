@@ -1,24 +1,23 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Command } from "commander";
-
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-
+import type { Command } from "commander";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthProfileCredential, OAuthCredential } from "../agents/auth-profiles/types.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
+import type { ReplyPayload } from "../auto-reply/types.js";
 import type { ChannelDock } from "../channels/dock.js";
-import type { ChannelPlugin } from "../channels/plugins/types.js";
+import type { ChannelId, ChannelPlugin } from "../channels/plugins/types.js";
+import type { createVpsAwareOAuthHandlers } from "../commands/oauth-flow.js";
 import type { OpenClawConfig } from "../config/config.js";
+import type { ModelProviderConfig } from "../config/types.js";
+import type { GatewayRequestHandler } from "../gateway/server-methods/types.js";
 import type { InternalHookHandler } from "../hooks/internal-hooks.js";
 import type { HookEntry } from "../hooks/types.js";
-import type { ModelProviderConfig } from "../config/types.js";
 import type { RuntimeEnv } from "../runtime.js";
-import type { ReplyPayload } from "../auto-reply/types.js";
 import type { WizardPrompter } from "../wizard/prompts.js";
-import type { createVpsAwareOAuthHandlers } from "../commands/oauth-flow.js";
-import type { GatewayRequestHandler } from "../gateway/server-methods/types.js";
 import type { PluginRuntime } from "./runtime/types.js";
 
 export type { PluginRuntime } from "./runtime/types.js";
+export type { AnyAgentTool } from "../agents/tools/common.js";
 
 export type PluginLogger = {
   debug?: (message: string) => void;
@@ -142,6 +141,8 @@ export type PluginCommandContext = {
   senderId?: string;
   /** The channel/surface (e.g., "telegram", "discord") */
   channel: string;
+  /** Provider channel id (e.g., "telegram") */
+  channelId?: ChannelId;
   /** Whether the sender is on the allowlist */
   isAuthorizedSender: boolean;
   /** Raw command arguments after the command name */
@@ -150,6 +151,14 @@ export type PluginCommandContext = {
   commandBody: string;
   /** Current OpenClaw configuration */
   config: OpenClawConfig;
+  /** Raw "From" value (channel-scoped id) */
+  from?: string;
+  /** Raw "To" value (channel-scoped id) */
+  to?: string;
+  /** Account id for multi-account channels */
+  accountId?: string;
+  /** Thread/topic id if available */
+  messageThreadId?: number;
 };
 
 /**

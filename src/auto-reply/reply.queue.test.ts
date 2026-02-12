@@ -1,7 +1,5 @@
 import path from "node:path";
-
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import { pollUntil } from "../../test/helpers/poll.js";
 import { withTempHome as withTempHomeBase } from "../../test/helpers/temp-home.js";
 import {
@@ -109,7 +107,10 @@ describe("queue followups", () => {
         p.includes("[Queued messages while agent was busy]"),
       );
       expect(queuedPrompt).toBeTruthy();
-      expect(queuedPrompt).toContain("[message_id: m-1]");
+      // Message id hints are no longer exposed to the model prompt.
+      expect(queuedPrompt).toContain("Queued #1");
+      expect(queuedPrompt).toContain("first");
+      expect(queuedPrompt).not.toContain("[message_id:");
     });
   });
 

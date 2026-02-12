@@ -1,21 +1,21 @@
-import fs from "node:fs/promises";
-import JSON5 from "json5";
 import type { Command } from "commander";
-
+import JSON5 from "json5";
+import fs from "node:fs/promises";
+import type { NodesRpcOpts } from "./nodes-cli/types.js";
 import {
   readExecApprovalsSnapshot,
   saveExecApprovals,
   type ExecApprovalsAgent,
   type ExecApprovalsFile,
 } from "../infra/exec-approvals.js";
+import { formatTimeAgo } from "../infra/format-time/format-relative.ts";
 import { defaultRuntime } from "../runtime.js";
 import { formatDocsLink } from "../terminal/links.js";
-import { isRich, theme } from "../terminal/theme.js";
 import { renderTable } from "../terminal/table.js";
-import { callGatewayFromCli } from "./gateway-rpc.js";
+import { isRich, theme } from "../terminal/theme.js";
 import { describeUnknownError } from "./gateway-cli/shared.js";
+import { callGatewayFromCli } from "./gateway-rpc.js";
 import { nodesCallOpts, resolveNodeId } from "./nodes-cli/rpc.js";
-import type { NodesRpcOpts } from "./nodes-cli/types.js";
 
 type ExecApprovalsSnapshot = {
   path: string;
@@ -31,23 +31,6 @@ type ExecApprovalsCliOpts = NodesRpcOpts & {
   stdin?: boolean;
   agent?: string;
 };
-
-function formatAge(msAgo: number) {
-  const s = Math.max(0, Math.floor(msAgo / 1000));
-  if (s < 60) {
-    return `${s}s`;
-  }
-  const m = Math.floor(s / 60);
-  if (m < 60) {
-    return `${m}m`;
-  }
-  const h = Math.floor(m / 60);
-  if (h < 24) {
-    return `${h}h`;
-  }
-  const d = Math.floor(h / 24);
-  return `${d}d`;
-}
 
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -143,7 +126,7 @@ function renderApprovalsSnapshot(snapshot: ExecApprovalsSnapshot, targetLabel: s
         Target: targetLabel,
         Agent: agentId,
         Pattern: pattern,
-        LastUsed: lastUsedAt ? `${formatAge(Math.max(0, now - lastUsedAt))} ago` : muted("unknown"),
+        LastUsed: lastUsedAt ? formatTimeAgo(Math.max(0, now - lastUsedAt)) : muted("unknown"),
       });
     }
   }

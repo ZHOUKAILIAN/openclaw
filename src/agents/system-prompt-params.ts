@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-
 import type { OpenClawConfig } from "../config/config.js";
 import {
   formatUserTime,
@@ -17,6 +16,7 @@ export type RuntimeInfoInput = {
   node: string;
   model: string;
   defaultModel?: string;
+  shell?: string;
   channel?: string;
   capabilities?: string[];
   /** Supported message actions for the current channel (e.g., react, edit, unsend) */

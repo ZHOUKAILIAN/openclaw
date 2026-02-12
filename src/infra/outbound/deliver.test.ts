@@ -1,11 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import type { OpenClawConfig } from "../../config/config.js";
 import { signalOutbound } from "../../channels/plugins/outbound/signal.js";
 import { telegramOutbound } from "../../channels/plugins/outbound/telegram.js";
 import { whatsappOutbound } from "../../channels/plugins/outbound/whatsapp.js";
-import { markdownToSignalTextChunks } from "../../signal/format.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
+import { markdownToSignalTextChunks } from "../../signal/format.js";
 import {
   createIMessageTestPlugin,
   createOutboundTestPlugin,
@@ -194,6 +193,73 @@ describe("deliverOutboundPayloads", () => {
       "+1555",
       "Line two",
       expect.objectContaining({ verbose: false }),
+    );
+  });
+
+  it("strips leading blank lines for WhatsApp text payloads", async () => {
+    const sendWhatsApp = vi.fn().mockResolvedValue({ messageId: "w1", toJid: "jid" });
+    const cfg: OpenClawConfig = {
+      channels: { whatsapp: { textChunkLimit: 4000 } },
+    };
+
+    await deliverOutboundPayloads({
+      cfg,
+      channel: "whatsapp",
+      to: "+1555",
+      payloads: [{ text: "\n\nHello from WhatsApp" }],
+      deps: { sendWhatsApp },
+    });
+
+    expect(sendWhatsApp).toHaveBeenCalledTimes(1);
+    expect(sendWhatsApp).toHaveBeenNthCalledWith(
+      1,
+      "+1555",
+      "Hello from WhatsApp",
+      expect.objectContaining({ verbose: false }),
+    );
+  });
+
+  it("drops whitespace-only WhatsApp text payloads when no media is attached", async () => {
+    const sendWhatsApp = vi.fn().mockResolvedValue({ messageId: "w1", toJid: "jid" });
+    const cfg: OpenClawConfig = {
+      channels: { whatsapp: { textChunkLimit: 4000 } },
+    };
+
+    const results = await deliverOutboundPayloads({
+      cfg,
+      channel: "whatsapp",
+      to: "+1555",
+      payloads: [{ text: "   \n\t   " }],
+      deps: { sendWhatsApp },
+    });
+
+    expect(sendWhatsApp).not.toHaveBeenCalled();
+    expect(results).toEqual([]);
+  });
+
+  it("keeps WhatsApp media payloads but clears whitespace-only captions", async () => {
+    const sendWhatsApp = vi.fn().mockResolvedValue({ messageId: "w1", toJid: "jid" });
+    const cfg: OpenClawConfig = {
+      channels: { whatsapp: { textChunkLimit: 4000 } },
+    };
+
+    await deliverOutboundPayloads({
+      cfg,
+      channel: "whatsapp",
+      to: "+1555",
+      payloads: [{ text: " \n\t ", mediaUrl: "https://example.com/photo.png" }],
+      deps: { sendWhatsApp },
+    });
+
+    expect(sendWhatsApp).toHaveBeenCalledTimes(1);
+    expect(sendWhatsApp).toHaveBeenNthCalledWith(
+      1,
+      "+1555",
+      "",
+      expect.objectContaining({
+        mediaUrl: "https://example.com/photo.png",
+        verbose: false,
+      }),
     );
   });
 

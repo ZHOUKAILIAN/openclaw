@@ -1,9 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-
 import { describe, expect, it, vi } from "vitest";
-
 import type { OpenClawConfig } from "../../config/config.js";
 import { saveSessionStore } from "../../config/sessions.js";
 import { initSessionState } from "./session.js";
@@ -456,7 +454,7 @@ describe("initSessionState channel reset overrides", () => {
       session: {
         store: storePath,
         idleMinutes: 60,
-        resetByType: { dm: { mode: "idle", idleMinutes: 10 } },
+        resetByType: { direct: { mode: "idle", idleMinutes: 10 } },
         resetByChannel: { discord: { mode: "idle", idleMinutes: 10080 } },
       },
     } as OpenClawConfig;

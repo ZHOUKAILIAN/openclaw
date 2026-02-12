@@ -83,6 +83,7 @@ vi.mock("@opentelemetry/sdk-trace-base", () => ({
 }));
 
 vi.mock("@opentelemetry/resources", () => ({
+  resourceFromAttributes: vi.fn((attrs: Record<string, unknown>) => attrs),
   Resource: class {
     // eslint-disable-next-line @typescript-eslint/no-useless-constructor
     constructor(_value?: unknown) {}
@@ -103,8 +104,8 @@ vi.mock("openclaw/plugin-sdk", async () => {
   };
 });
 
-import { createDiagnosticsOtelService } from "./service.js";
 import { emitDiagnosticEvent } from "openclaw/plugin-sdk";
+import { createDiagnosticsOtelService } from "./service.js";
 
 describe("diagnostics-otel service", () => {
   beforeEach(() => {

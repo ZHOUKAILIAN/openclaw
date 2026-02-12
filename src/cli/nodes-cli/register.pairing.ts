@@ -1,10 +1,11 @@
 import type { Command } from "commander";
-import { defaultRuntime } from "../../runtime.js";
-import { formatAge, parsePairingList } from "./format.js";
-import { getNodesTheme, runNodesCommand } from "./cli-utils.js";
-import { callGatewayCli, nodesCallOpts, resolveNodeId } from "./rpc.js";
 import type { NodesRpcOpts } from "./types.js";
+import { formatTimeAgo } from "../../infra/format-time/format-relative.ts";
+import { defaultRuntime } from "../../runtime.js";
 import { renderTable } from "../../terminal/table.js";
+import { getNodesTheme, runNodesCommand } from "./cli-utils.js";
+import { parsePairingList } from "./format.js";
+import { callGatewayCli, nodesCallOpts, resolveNodeId } from "./rpc.js";
 
 export function registerNodesPairingCommands(nodes: Command) {
   nodesCallOpts(
@@ -32,9 +33,7 @@ export function registerNodesPairingCommands(nodes: Command) {
             Node: r.displayName?.trim() ? r.displayName.trim() : r.nodeId,
             IP: r.remoteIp ?? "",
             Requested:
-              typeof r.ts === "number"
-                ? `${formatAge(Math.max(0, now - r.ts))} ago`
-                : muted("unknown"),
+              typeof r.ts === "number" ? formatTimeAgo(Math.max(0, now - r.ts)) : muted("unknown"),
             Repair: r.isRepair ? warn("yes") : "",
           }));
           defaultRuntime.log(heading("Pending"));

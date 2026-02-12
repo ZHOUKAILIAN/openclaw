@@ -1,15 +1,14 @@
+import type { RESTAPIPoll } from "discord-api-types/rest/v10";
 import { RequestClient } from "@buape/carbon";
 import { PollLayoutType } from "discord-api-types/payloads/v10";
-import type { RESTAPIPoll } from "discord-api-types/rest/v10";
 import { Routes } from "discord-api-types/v10";
-
-import { loadConfig } from "../config/config.js";
+import type { ChunkMode } from "../auto-reply/chunk.js";
 import type { RetryConfig } from "../infra/retry.js";
+import { loadConfig } from "../config/config.js";
 import { createDiscordRetryRunner, type RetryRunner } from "../infra/retry-policy.js";
 import { normalizePollDurationHours, normalizePollInput, type PollInput } from "../polls.js";
 import { loadWebMedia } from "../web/media.js";
 import { resolveDiscordAccount } from "./accounts.js";
-import type { ChunkMode } from "../auto-reply/chunk.js";
 import { chunkDiscordTextWithMode } from "./chunk.js";
 import { fetchChannelPermissionsDiscord, isThreadChannelType } from "./send.permissions.js";
 import { DiscordSendError } from "./send.types.js";
@@ -279,6 +278,24 @@ async function resolveChannelId(
   return { channelId: dmChannel.id, dm: true };
 }
 
+export function buildDiscordTextChunks(
+  text: string,
+  opts: { maxLinesPerMessage?: number; chunkMode?: ChunkMode; maxChars?: number } = {},
+): string[] {
+  if (!text) {
+    return [];
+  }
+  const chunks = chunkDiscordTextWithMode(text, {
+    maxChars: opts.maxChars ?? DISCORD_TEXT_LIMIT,
+    maxLines: opts.maxLinesPerMessage,
+    chunkMode: opts.chunkMode,
+  });
+  if (!chunks.length && text) {
+    chunks.push(text);
+  }
+  return chunks;
+}
+
 async function sendDiscordText(
   rest: RequestClient,
   channelId: string,
@@ -293,14 +310,7 @@ async function sendDiscordText(
     throw new Error("Message must be non-empty for Discord sends");
   }
   const messageReference = replyTo ? { message_id: replyTo, fail_if_not_exists: false } : undefined;
-  const chunks = chunkDiscordTextWithMode(text, {
-    maxChars: DISCORD_TEXT_LIMIT,
-    maxLines: maxLinesPerMessage,
-    chunkMode,
-  });
-  if (!chunks.length && text) {
-    chunks.push(text);
-  }
+  const chunks = buildDiscordTextChunks(text, { maxLinesPerMessage, chunkMode });
   if (chunks.length === 1) {
     const res = (await request(
       () =>
@@ -349,16 +359,7 @@ async function sendDiscordMedia(
   chunkMode?: ChunkMode,
 ) {
   const media = await loadWebMedia(mediaUrl);
-  const chunks = text
-    ? chunkDiscordTextWithMode(text, {
-        maxChars: DISCORD_TEXT_LIMIT,
-        maxLines: maxLinesPerMessage,
-        chunkMode,
-      })
-    : [];
-  if (!chunks.length && text) {
-    chunks.push(text);
-  }
+  const chunks = text ? buildDiscordTextChunks(text, { maxLinesPerMessage, chunkMode }) : [];
   const caption = chunks[0] ?? "";
   const messageReference = replyTo ? { message_id: replyTo, fail_if_not_exists: false } : undefined;
   const res = (await request(

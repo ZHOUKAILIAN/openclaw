@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
 import { buildPairingReply } from "./pairing-messages.js";
 
 describe("buildPairingReply", () => {
@@ -19,6 +18,11 @@ describe("buildPairingReply", () => {
   });
 
   const cases = [
+    {
+      channel: "telegram",
+      idLine: "Your Telegram user id: 42",
+      code: "QRS678",
+    },
     {
       channel: "discord",
       idLine: "Your Discord user id: 1",
@@ -53,7 +57,7 @@ describe("buildPairingReply", () => {
       expect(text).toContain(`Pairing code: ${testCase.code}`);
       // CLI commands should respect OPENCLAW_PROFILE when set (most tests run with isolated profile)
       const commandRe = new RegExp(
-        `(?:openclaw|openclaw) --profile isolated pairing approve ${testCase.channel} <code>`,
+        `(?:openclaw|openclaw) --profile isolated pairing approve ${testCase.channel} ${testCase.code}`,
       );
       expect(text).toMatch(commandRe);
     });

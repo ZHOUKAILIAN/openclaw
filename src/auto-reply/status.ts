@@ -1,18 +1,24 @@
 import fs from "node:fs";
-
+import type { SkillCommandSpec } from "../agents/skills.js";
+import type { OpenClawConfig } from "../config/config.js";
+import type { MediaUnderstandingDecision } from "../media-understanding/types.js";
+import type { CommandCategory } from "./commands-registry.types.js";
+import type { ElevatedLevel, ReasoningLevel, ThinkLevel, VerboseLevel } from "./thinking.js";
 import { lookupContextTokens } from "../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
 import { resolveModelAuthMode } from "../agents/model-auth.js";
 import { resolveConfiguredModelRef } from "../agents/model-selection.js";
 import { resolveSandboxRuntimeStatus } from "../agents/sandbox.js";
 import { derivePromptTokens, normalizeUsage, type UsageLike } from "../agents/usage.js";
-import type { OpenClawConfig } from "../config/config.js";
 import {
   resolveMainSessionKey,
   resolveSessionFilePath,
   type SessionEntry,
   type SessionScope,
 } from "../config/sessions.js";
+import { formatTimeAgo } from "../infra/format-time/format-relative.ts";
+import { resolveCommitHash } from "../infra/git-commit.js";
+import { listPluginCommands } from "../plugins/commands.js";
 import {
   getTtsMaxLength,
   getTtsProvider,
@@ -21,7 +27,6 @@ import {
   resolveTtsConfig,
   resolveTtsPrefsPath,
 } from "../tts/tts.js";
-import { resolveCommitHash } from "../infra/git-commit.js";
 import {
   estimateUsageCost,
   formatTokenCount as formatTokenCountShared,
@@ -34,11 +39,6 @@ import {
   listChatCommandsForConfig,
   type ChatCommandDefinition,
 } from "./commands-registry.js";
-import { listPluginCommands } from "../plugins/commands.js";
-import type { SkillCommandSpec } from "../agents/skills.js";
-import type { CommandCategory } from "./commands-registry.types.js";
-import type { ElevatedLevel, ReasoningLevel, ThinkLevel, VerboseLevel } from "./thinking.js";
-import type { MediaUnderstandingDecision } from "../media-understanding/types.js";
 
 type AgentConfig = Partial<NonNullable<NonNullable<OpenClawConfig["agents"]>["defaults"]>>;
 
@@ -134,25 +134,6 @@ export const formatContextUsageShort = (
   total: number | null | undefined,
   contextTokens: number | null | undefined,
 ) => `Context ${formatTokens(total, contextTokens ?? null)}`;
-
-const formatAge = (ms?: number | null) => {
-  if (!ms || ms < 0) {
-    return "unknown";
-  }
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 1) {
-    return "just now";
-  }
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) {
-    return `${hours}h ago`;
-  }
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-};
 
 const formatQueueDetails = (queue?: QueueStatus) => {
   if (!queue) {
@@ -387,7 +368,7 @@ export function buildStatusMessage(args: StatusArgs): string {
   const updatedAt = entry?.updatedAt;
   const sessionLine = [
     `Session: ${args.sessionKey ?? "unknown"}`,
-    typeof updatedAt === "number" ? `updated ${formatAge(now - updatedAt)}` : "no activity",
+    typeof updatedAt === "number" ? `updated ${formatTimeAgo(now - updatedAt)}` : "no activity",
   ]
     .filter(Boolean)
     .join(" • ");

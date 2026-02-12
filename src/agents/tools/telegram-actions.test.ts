@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import type { OpenClawConfig } from "../../config/config.js";
 import { handleTelegramAction, readTelegramButtons } from "./telegram-actions.js";
 
@@ -58,6 +57,37 @@ describe("handleTelegramAction", () => {
       "✅",
       expect.objectContaining({ token: "tok", remove: false }),
     );
+  });
+
+  it("surfaces non-fatal reaction warnings", async () => {
+    reactMessageTelegram.mockResolvedValueOnce({
+      ok: false,
+      warning: "Reaction unavailable: ✅",
+    });
+    const cfg = {
+      channels: { telegram: { botToken: "tok", reactionLevel: "minimal" } },
+    } as OpenClawConfig;
+    const result = await handleTelegramAction(
+      {
+        action: "react",
+        chatId: "123",
+        messageId: "456",
+        emoji: "✅",
+      },
+      cfg,
+    );
+    const textPayload = result.content.find((item) => item.type === "text");
+    expect(textPayload?.type).toBe("text");
+    const parsed = JSON.parse((textPayload as { type: "text"; text: string }).text) as {
+      ok: boolean;
+      warning?: string;
+      added?: string;
+    };
+    expect(parsed).toMatchObject({
+      ok: false,
+      warning: "Reaction unavailable: ✅",
+      added: "✅",
+    });
   });
 
   it("adds reactions when reactionLevel is extensive", async () => {

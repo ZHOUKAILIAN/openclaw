@@ -1,14 +1,15 @@
 import type { ExecToolDefaults } from "../../agents/bash-tools.js";
 import type { ModelAliasIndex } from "../../agents/model-selection.js";
 import type { SkillCommandSpec } from "../../agents/skills.js";
-import { resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
-import { listChatCommands, shouldHandleTextCommands } from "../commands-registry.js";
-import { listSkillCommandsForWorkspace } from "../skill-commands.js";
 import type { MsgContext, TemplateContext } from "../templating.js";
 import type { ElevatedLevel, ReasoningLevel, ThinkLevel, VerboseLevel } from "../thinking.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
+import type { TypingController } from "./typing.js";
+import { resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
+import { listChatCommands, shouldHandleTextCommands } from "../commands-registry.js";
+import { listSkillCommandsForWorkspace } from "../skill-commands.js";
 import { resolveBlockStreamingChunking } from "./block-streaming.js";
 import { buildCommandContext } from "./commands.js";
 import { type InlineDirectives, parseInlineDirectives } from "./directive-handling.js";
@@ -19,7 +20,6 @@ import { CURRENT_MESSAGE_MARKER, stripMentions, stripStructuralPrefixes } from "
 import { createModelSelectionState, resolveContextTokens } from "./model-selection.js";
 import { formatElevatedUnavailableMessage, resolveElevatedPermissions } from "./reply-elevated.js";
 import { stripInlineStatus } from "./reply-inline.js";
-import type { TypingController } from "./typing.js";
 
 type AgentDefaults = NonNullable<OpenClawConfig["agents"]>["defaults"];
 type ExecOverrides = Pick<ExecToolDefaults, "host" | "security" | "ask" | "node">;
@@ -46,6 +46,7 @@ export type ReplyDirectiveContinuation = {
     minChars: number;
     maxChars: number;
     breakPreference: "paragraph" | "newline" | "sentence";
+    flushOnParagraph?: boolean;
   };
   resolvedBlockStreamingBreak: "text_end" | "message_end";
   provider: string;
@@ -105,6 +106,7 @@ export async function resolveReplyDirectives(params: {
   aliasIndex: ModelAliasIndex;
   provider: string;
   model: string;
+  hasResolvedHeartbeatModelOverride: boolean;
   typing: TypingController;
   opts?: GetReplyOptions;
   skillFilter?: string[];
@@ -130,6 +132,7 @@ export async function resolveReplyDirectives(params: {
     defaultModel,
     provider: initialProvider,
     model: initialModel,
+    hasResolvedHeartbeatModelOverride,
     typing,
     opts,
     skillFilter,
@@ -390,6 +393,7 @@ export async function resolveReplyDirectives(params: {
     provider,
     model,
     hasModelDirective: directives.hasModelDirective,
+    hasResolvedHeartbeatModelOverride,
   });
   provider = modelState.provider;
   model = modelState.model;

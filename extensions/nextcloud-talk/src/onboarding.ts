@@ -6,15 +6,15 @@ import {
   normalizeAccountId,
   type ChannelOnboardingAdapter,
   type ChannelOnboardingDmPolicy,
+  type OpenClawConfig,
   type WizardPrompter,
 } from "openclaw/plugin-sdk";
-
+import type { CoreConfig, DmPolicy } from "./types.js";
 import {
   listNextcloudTalkAccountIds,
   resolveDefaultNextcloudTalkAccountId,
   resolveNextcloudTalkAccount,
 } from "./accounts.js";
-import type { CoreConfig, DmPolicy } from "./types.js";
 
 const channel = "nextcloud-talk" as const;
 
@@ -160,7 +160,11 @@ const dmPolicy: ChannelOnboardingDmPolicy = {
   allowFromKey: "channels.nextcloud-talk.allowFrom",
   getCurrent: (cfg) => cfg.channels?.["nextcloud-talk"]?.dmPolicy ?? "pairing",
   setPolicy: (cfg, policy) => setNextcloudTalkDmPolicy(cfg as CoreConfig, policy as DmPolicy),
-  promptAllowFrom: promptNextcloudTalkAllowFromForAccount,
+  promptAllowFrom: promptNextcloudTalkAllowFromForAccount as (params: {
+    cfg: OpenClawConfig;
+    prompter: WizardPrompter;
+    accountId?: string | undefined;
+  }) => Promise<OpenClawConfig>,
 };
 
 export const nextcloudTalkOnboardingAdapter: ChannelOnboardingAdapter = {
@@ -197,7 +201,7 @@ export const nextcloudTalkOnboardingAdapter: ChannelOnboardingAdapter = {
         prompter,
         label: "Nextcloud Talk",
         currentId: accountId,
-        listAccountIds: listNextcloudTalkAccountIds,
+        listAccountIds: listNextcloudTalkAccountIds as (cfg: OpenClawConfig) => string[],
         defaultAccountId,
       });
     }

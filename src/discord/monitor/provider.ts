@@ -1,24 +1,24 @@
-import { inspect } from "node:util";
-import { Client } from "@buape/carbon";
+import { Client, type BaseMessageInteractiveComponent } from "@buape/carbon";
 import { GatewayIntents, GatewayPlugin } from "@buape/carbon/gateway";
 import { Routes } from "discord-api-types/v10";
+import { inspect } from "node:util";
+import type { HistoryEntry } from "../../auto-reply/reply/history.js";
+import type { OpenClawConfig, ReplyToMode } from "../../config/config.js";
+import type { RuntimeEnv } from "../../runtime.js";
 import { resolveTextChunkLimit } from "../../auto-reply/chunk.js";
 import { listNativeCommandSpecsForConfig } from "../../auto-reply/commands-registry.js";
 import { listSkillCommandsForAgents } from "../../auto-reply/skill-commands.js";
-import type { HistoryEntry } from "../../auto-reply/reply/history.js";
 import { mergeAllowlist, summarizeMapping } from "../../channels/allowlists/resolve-utils.js";
 import {
   isNativeCommandsExplicitlyDisabled,
   resolveNativeCommandsEnabled,
   resolveNativeSkillsEnabled,
 } from "../../config/commands.js";
-import type { OpenClawConfig, ReplyToMode } from "../../config/config.js";
 import { loadConfig } from "../../config/config.js";
 import { danger, logVerbose, shouldLogVerbose, warn } from "../../globals.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { createDiscordRetryRunner } from "../../infra/retry-policy.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import type { RuntimeEnv } from "../../runtime.js";
 import { resolveDiscordAccount } from "../accounts.js";
 import { attachDiscordGatewayLogging } from "../gateway-logging.js";
 import { getDiscordGatewayEmitter, waitForDiscordGatewayStop } from "../monitor.gateway.js";
@@ -26,6 +26,9 @@ import { fetchDiscordApplicationId } from "../probe.js";
 import { resolveDiscordChannelAllowlist } from "../resolve-channels.js";
 import { resolveDiscordUserAllowlist } from "../resolve-users.js";
 import { normalizeDiscordToken } from "../token.js";
+import { createAgentComponentButton, createAgentSelectMenu } from "./agent-components.js";
+import { createExecApprovalButton, DiscordExecApprovalHandler } from "./exec-approvals.js";
+import { registerGateway, unregisterGateway } from "./gateway-registry.js";
 import {
   DiscordMessageListener,
   DiscordPresenceListener,
@@ -38,7 +41,6 @@ import {
   createDiscordCommandArgFallbackButton,
   createDiscordNativeCommand,
 } from "./native-command.js";
-import { createExecApprovalButton, DiscordExecApprovalHandler } from "./exec-approvals.js";
 
 export type MonitorDiscordOpts = {
   token?: string;
@@ -473,7 +475,10 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
       })
     : null;
 
-  const components = [
+  const agentComponentsConfig = discordCfg.agentComponents ?? {};
+  const agentComponentsEnabled = agentComponentsConfig.enabled ?? true;
+
+  const components: BaseMessageInteractiveComponent[] = [
     createDiscordCommandArgFallbackButton({
       cfg,
       discordConfig: discordCfg,
@@ -484,6 +489,27 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
 
   if (execApprovalsHandler) {
     components.push(createExecApprovalButton({ handler: execApprovalsHandler }));
+  }
+
+  if (agentComponentsEnabled) {
+    components.push(
+      createAgentComponentButton({
+        cfg,
+        accountId: account.accountId,
+        guildEntries,
+        allowFrom,
+        dmPolicy,
+      }),
+    );
+    components.push(
+      createAgentSelectMenu({
+        cfg,
+        accountId: account.accountId,
+        guildEntries,
+        allowFrom,
+        dmPolicy,
+      }),
+    );
   }
 
   const client = new Client(
@@ -503,7 +529,7 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
     [
       new GatewayPlugin({
         reconnect: {
-          maxAttempts: Number.POSITIVE_INFINITY,
+          maxAttempts: 50,
         },
         intents: resolveDiscordGatewayIntents(discordCfg.intents),
         autoInteractions: true,
@@ -591,6 +617,9 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
   }
 
   const gateway = client.getPlugin<GatewayPlugin>("gateway");
+  if (gateway) {
+    registerGateway(account.accountId, gateway);
+  }
   const gatewayEmitter = getDiscordGatewayEmitter(gateway);
   const stopGatewayLogging = attachDiscordGatewayLogging({
     emitter: gatewayEmitter,
@@ -657,6 +686,7 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
       },
     });
   } finally {
+    unregisterGateway(account.accountId);
     stopGatewayLogging();
     if (helloTimeoutId) {
       clearTimeout(helloTimeoutId);

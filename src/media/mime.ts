@@ -1,6 +1,5 @@
-import path from "node:path";
-
 import { fileTypeFromBuffer } from "file-type";
+import path from "node:path";
 import { type MediaKind, mediaKindFromMime } from "./constants.js";
 
 // Map common mimes to preferred file extensions.
@@ -43,6 +42,7 @@ const MIME_BY_EXT: Record<string, string> = {
 
 const AUDIO_FILE_EXTENSIONS = new Set([
   ".aac",
+  ".caf",
   ".flac",
   ".m4a",
   ".mp3",

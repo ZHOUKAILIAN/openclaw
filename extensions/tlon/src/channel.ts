@@ -1,4 +1,5 @@
 import type {
+  ChannelAccountSnapshot,
   ChannelOutboundAdapter,
   ChannelPlugin,
   ChannelSetupInput,
@@ -9,14 +10,13 @@ import {
   DEFAULT_ACCOUNT_ID,
   normalizeAccountId,
 } from "openclaw/plugin-sdk";
-
-import { resolveTlonAccount, listTlonAccountIds } from "./types.js";
+import { tlonChannelConfigSchema } from "./config-schema.js";
+import { monitorTlonProvider } from "./monitor/index.js";
+import { tlonOnboardingAdapter } from "./onboarding.js";
 import { formatTargetHint, normalizeShip, parseTlonTarget } from "./targets.js";
+import { resolveTlonAccount, listTlonAccountIds } from "./types.js";
 import { ensureUrbitConnectPatched, Urbit } from "./urbit/http-api.js";
 import { buildMediaText, sendDm, sendGroupMessage } from "./urbit/send.js";
-import { monitorTlonProvider } from "./monitor/index.js";
-import { tlonChannelConfigSchema } from "./config-schema.js";
-import { tlonOnboardingAdapter } from "./onboarding.js";
 
 const TLON_CHANNEL_ID = "tlon" as const;
 
@@ -102,7 +102,7 @@ const tlonOutbound: ChannelOutboundAdapter = {
         error: new Error(`Invalid Tlon target. Use ${formatTargetHint()}`),
       };
     }
-    if (parsed.kind === "dm") {
+    if (parsed.kind === "direct") {
       return { ok: true, to: parsed.ship };
     }
     return { ok: true, to: parsed.nest };
@@ -128,7 +128,7 @@ const tlonOutbound: ChannelOutboundAdapter = {
 
     try {
       const fromShip = normalizeShip(account.ship);
-      if (parsed.kind === "dm") {
+      if (parsed.kind === "direct") {
         return await sendDm({
           api,
           fromShip,
@@ -155,7 +155,7 @@ const tlonOutbound: ChannelOutboundAdapter = {
   },
   sendMedia: async ({ cfg, to, text, mediaUrl, accountId, replyToId, threadId }) => {
     const mergedText = buildMediaText(text, mediaUrl);
-    return await tlonOutbound.sendText({
+    return await tlonOutbound.sendText!({
       cfg,
       to,
       text: mergedText,
@@ -225,9 +225,11 @@ export const tlonPlugin: ChannelPlugin = {
     deleteAccount: ({ cfg, accountId }) => {
       const useDefault = !accountId || accountId === "default";
       if (useDefault) {
-        // @ts-expect-error
         // oxlint-disable-next-line no-unused-vars
-        const { ship, code, url, name, ...rest } = cfg.channels?.tlon ?? {};
+        const { ship, code, url, name, ...rest } = (cfg.channels?.tlon ?? {}) as Record<
+          string,
+          unknown
+        >;
         return {
           ...cfg,
           channels: {
@@ -236,9 +238,9 @@ export const tlonPlugin: ChannelPlugin = {
           },
         } as OpenClawConfig;
       }
-      // @ts-expect-error
       // oxlint-disable-next-line no-unused-vars
-      const { [accountId]: removed, ...remainingAccounts } = cfg.channels?.tlon?.accounts ?? {};
+      const { [accountId]: removed, ...remainingAccounts } = (cfg.channels?.tlon?.accounts ??
+        {}) as Record<string, unknown>;
       return {
         ...cfg,
         channels: {
@@ -299,7 +301,7 @@ export const tlonPlugin: ChannelPlugin = {
       if (!parsed) {
         return target.trim();
       }
-      if (parsed.kind === "dm") {
+      if (parsed.kind === "direct") {
         return parsed.ship;
       }
       return parsed.nest;
@@ -335,8 +337,8 @@ export const tlonPlugin: ChannelPlugin = {
     },
     buildChannelSummary: ({ snapshot }) => ({
       configured: snapshot.configured ?? false,
-      ship: snapshot.ship ?? null,
-      url: snapshot.url ?? null,
+      ship: (snapshot as { ship?: string | null }).ship ?? null,
+      url: (snapshot as { url?: string | null }).url ?? null,
     }),
     probeAccount: async ({ account }) => {
       if (!account.configured || !account.ship || !account.url || !account.code) {
@@ -356,8 +358,8 @@ export const tlonPlugin: ChannelPlugin = {
         } finally {
           await api.delete();
         }
-      } catch (error: any) {
-        return { ok: false, error: error?.message ?? String(error) };
+      } catch (error) {
+        return { ok: false, error: (error as { message?: string })?.message ?? String(error) };
       }
     },
     buildAccountSnapshot: ({ account, runtime, probe }) => ({
@@ -381,7 +383,7 @@ export const tlonPlugin: ChannelPlugin = {
         accountId: account.accountId,
         ship: account.ship,
         url: account.url,
-      });
+      } as ChannelAccountSnapshot);
       ctx.log?.info(`[${account.accountId}] starting Tlon provider for ${account.ship ?? "tlon"}`);
       return monitorTlonProvider({
         runtime: ctx.runtime,

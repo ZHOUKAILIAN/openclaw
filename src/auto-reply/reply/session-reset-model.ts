@@ -1,3 +1,6 @@
+import type { OpenClawConfig } from "../../config/config.js";
+import type { SessionEntry } from "../../config/sessions.js";
+import type { MsgContext, TemplateContext } from "../templating.js";
 import { loadModelCatalog } from "../../agents/model-catalog.js";
 import {
   buildAllowedModelSet,
@@ -6,13 +9,9 @@ import {
   resolveModelRefFromString,
   type ModelAliasIndex,
 } from "../../agents/model-selection.js";
-import type { OpenClawConfig } from "../../config/config.js";
-import type { SessionEntry } from "../../config/sessions.js";
 import { updateSessionStore } from "../../config/sessions.js";
-import type { MsgContext, TemplateContext } from "../templating.js";
-import { formatInboundBodyWithSenderMeta } from "./inbound-sender-meta.js";
-import { resolveModelDirectiveSelection, type ModelDirectiveSelection } from "./model-selection.js";
 import { applyModelOverrideToSessionEntry } from "../../sessions/model-overrides.js";
+import { resolveModelDirectiveSelection, type ModelDirectiveSelection } from "./model-selection.js";
 
 type ResetModelResult = {
   selection?: ModelDirectiveSelection;
@@ -184,10 +183,7 @@ export async function applyResetModelOverride(params: {
   }
 
   const cleanedBody = tokens.slice(consumed).join(" ").trim();
-  params.sessionCtx.BodyStripped = formatInboundBodyWithSenderMeta({
-    ctx: params.ctx,
-    body: cleanedBody,
-  });
+  params.sessionCtx.BodyStripped = cleanedBody;
   params.sessionCtx.BodyForCommands = cleanedBody;
 
   applySelectionToSession({

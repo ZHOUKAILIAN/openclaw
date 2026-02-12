@@ -2,7 +2,6 @@ import { Type } from "@sinclair/typebox";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-
 import type { OpenClawPluginApi } from "../../../src/plugins/types.js";
 
 type LobsterEnvelope =
@@ -233,6 +232,7 @@ function parseEnvelope(stdout: string): LobsterEnvelope {
 export function createLobsterTool(api: OpenClawPluginApi) {
   return {
     name: "lobster",
+    label: "Lobster Workflow",
     description:
       "Run Lobster pipelines as a local-first workflow runtime (typed JSON envelope + resumable approvals).",
     parameters: Type.Object({

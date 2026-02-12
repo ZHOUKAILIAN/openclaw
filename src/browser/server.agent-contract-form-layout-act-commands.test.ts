@@ -1,6 +1,5 @@
 import { type AddressInfo, createServer } from "node:net";
 import { fetch as realFetch } from "undici";
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let testPort = 0;
@@ -358,12 +357,15 @@ describe("browser control server", () => {
       });
       expect(evalRes.ok).toBe(true);
       expect(evalRes.result).toBe("ok");
-      expect(pwMocks.evaluateViaPlaywright).toHaveBeenCalledWith({
-        cdpUrl: cdpBaseUrl,
-        targetId: "abcd1234",
-        fn: "() => 1",
-        ref: undefined,
-      });
+      expect(pwMocks.evaluateViaPlaywright).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cdpUrl: cdpBaseUrl,
+          targetId: "abcd1234",
+          fn: "() => 1",
+          ref: undefined,
+          signal: expect.any(AbortSignal),
+        }),
+      );
     },
     slowTimeoutMs,
   );

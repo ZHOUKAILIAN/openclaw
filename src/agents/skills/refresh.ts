@@ -1,7 +1,5 @@
-import path from "node:path";
-
 import chokidar, { type FSWatcher } from "chokidar";
-
+import path from "node:path";
 import type { OpenClawConfig } from "../../config/config.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { CONFIG_DIR, resolveUserPath } from "../../utils.js";
@@ -31,6 +29,15 @@ export const DEFAULT_SKILLS_WATCH_IGNORED: RegExp[] = [
   /(^|[\\/])\.git([\\/]|$)/,
   /(^|[\\/])node_modules([\\/]|$)/,
   /(^|[\\/])dist([\\/]|$)/,
+  // Python virtual environments and caches
+  /(^|[\\/])\.venv([\\/]|$)/,
+  /(^|[\\/])venv([\\/]|$)/,
+  /(^|[\\/])__pycache__([\\/]|$)/,
+  /(^|[\\/])\.mypy_cache([\\/]|$)/,
+  /(^|[\\/])\.pytest_cache([\\/]|$)/,
+  // Build artifacts and caches
+  /(^|[\\/])build([\\/]|$)/,
+  /(^|[\\/])\.cache([\\/]|$)/,
 ];
 
 function bumpVersion(current: number): number {

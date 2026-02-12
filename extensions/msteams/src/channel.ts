@@ -5,11 +5,11 @@ import {
   MSTeamsConfigSchema,
   PAIRING_APPROVED_MESSAGE,
 } from "openclaw/plugin-sdk";
-
+import { listMSTeamsDirectoryGroupsLive, listMSTeamsDirectoryPeersLive } from "./directory-live.js";
 import { msteamsOnboardingAdapter } from "./onboarding.js";
 import { msteamsOutbound } from "./outbound.js";
-import { probeMSTeams } from "./probe.js";
 import { resolveMSTeamsGroupToolPolicy } from "./policy.js";
+import { probeMSTeams } from "./probe.js";
 import {
   normalizeMSTeamsMessagingTarget,
   normalizeMSTeamsUserInput,
@@ -20,7 +20,6 @@ import {
 } from "./resolve-allowlist.js";
 import { sendAdaptiveCardMSTeams, sendMessageMSTeams } from "./send.js";
 import { resolveMSTeamsCredentials } from "./token.js";
-import { listMSTeamsDirectoryGroupsLive, listMSTeamsDirectoryPeersLive } from "./directory-live.js";
 
 type ResolvedMSTeamsAccount = {
   accountId: string;
@@ -43,6 +42,7 @@ export const msteamsPlugin: ChannelPlugin<ResolvedMSTeamsAccount> = {
   id: "msteams",
   meta: {
     ...meta,
+    aliases: [...meta.aliases],
   },
   onboarding: msteamsOnboardingAdapter,
   pairing: {
@@ -385,7 +385,8 @@ export const msteamsPlugin: ChannelPlugin<ResolvedMSTeamsAccount> = {
         if (!to) {
           return {
             isError: true,
-            content: [{ type: "text", text: "Card send requires a target (to)." }],
+            content: [{ type: "text" as const, text: "Card send requires a target (to)." }],
+            details: { error: "Card send requires a target (to)." },
           };
         }
         const result = await sendAdaptiveCardMSTeams({
@@ -396,7 +397,7 @@ export const msteamsPlugin: ChannelPlugin<ResolvedMSTeamsAccount> = {
         return {
           content: [
             {
-              type: "text",
+              type: "text" as const,
               text: JSON.stringify({
                 ok: true,
                 channel: "msteams",
@@ -405,6 +406,7 @@ export const msteamsPlugin: ChannelPlugin<ResolvedMSTeamsAccount> = {
               }),
             },
           ],
+          details: { ok: true, channel: "msteams", messageId: result.messageId },
         };
       }
       // Return null to fall through to default handler

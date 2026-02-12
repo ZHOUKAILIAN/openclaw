@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-
 import {
   formatChannelSelectionLine,
   listChatChannels,
@@ -11,6 +10,7 @@ describe("channel registry", () => {
     expect(normalizeChatChannelId("imsg")).toBe("imessage");
     expect(normalizeChatChannelId("gchat")).toBe("googlechat");
     expect(normalizeChatChannelId("google-chat")).toBe("googlechat");
+    expect(normalizeChatChannelId("internet-relay-chat")).toBe("irc");
     expect(normalizeChatChannelId("web")).toBeNull();
   });
 

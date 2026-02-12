@@ -1,11 +1,12 @@
+import type { ReplyPayload } from "../../auto-reply/types.js";
+import { appendCronStyleCurrentTimeLine } from "../../agents/current-time.js";
 import {
   DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
   resolveHeartbeatPrompt,
   stripHeartbeatToken,
 } from "../../auto-reply/heartbeat.js";
-import { HEARTBEAT_TOKEN } from "../../auto-reply/tokens.js";
 import { getReplyFromConfig } from "../../auto-reply/reply.js";
-import type { ReplyPayload } from "../../auto-reply/types.js";
+import { HEARTBEAT_TOKEN } from "../../auto-reply/tokens.js";
 import { resolveWhatsAppHeartbeatRecipients } from "../../channels/plugins/whatsapp-heartbeat.js";
 import { loadConfig } from "../../config/config.js";
 import {
@@ -159,7 +160,11 @@ export async function runWebHeartbeatOnce(opts: {
 
     const replyResult = await replyResolver(
       {
-        Body: resolveHeartbeatPrompt(cfg.agents?.defaults?.heartbeat?.prompt),
+        Body: appendCronStyleCurrentTimeLine(
+          resolveHeartbeatPrompt(cfg.agents?.defaults?.heartbeat?.prompt),
+          cfg,
+          Date.now(),
+        ),
         From: to,
         To: to,
         MessageSid: sessionId ?? sessionSnapshot.entry?.sessionId,

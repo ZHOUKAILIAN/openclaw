@@ -1,8 +1,9 @@
 import type { MessageEvent, StickerEventMessage, EventSource, PostbackEvent } from "@line/bot-sdk";
+import type { OpenClawConfig } from "../config/config.js";
+import type { ResolvedLineAccount } from "./types.js";
 import { formatInboundEnvelope, resolveEnvelopeFormatOptions } from "../auto-reply/envelope.js";
 import { finalizeInboundContext } from "../auto-reply/reply/inbound-context.js";
 import { formatLocationText, toLocationContext } from "../channels/location.js";
-import type { OpenClawConfig } from "../config/config.js";
 import {
   readSessionUpdatedAt,
   recordSessionMetaFromInbound,
@@ -12,7 +13,6 @@ import {
 import { logVerbose, shouldLogVerbose } from "../globals.js";
 import { recordChannelActivity } from "../infra/channel-activity.js";
 import { resolveAgentRoute } from "../routing/resolve-route.js";
-import type { ResolvedLineAccount } from "./types.js";
 
 interface MediaRef {
   path: string;
@@ -154,7 +154,7 @@ export async function buildLineMessageContext(params: BuildLineMessageContextPar
     channel: "line",
     accountId: account.accountId,
     peer: {
-      kind: isGroup ? "group" : "dm",
+      kind: isGroup ? "group" : "direct",
       id: peerId,
     },
   });
@@ -236,6 +236,7 @@ export async function buildLineMessageContext(params: BuildLineMessageContextPar
 
   const ctxPayload = finalizeInboundContext({
     Body: body,
+    BodyForAgent: rawBody,
     RawBody: rawBody,
     CommandBody: rawBody,
     From: fromAddress,
@@ -328,7 +329,7 @@ export async function buildLinePostbackContext(params: {
     channel: "line",
     accountId: account.accountId,
     peer: {
-      kind: isGroup ? "group" : "dm",
+      kind: isGroup ? "group" : "direct",
       id: peerId,
     },
   });
@@ -392,6 +393,7 @@ export async function buildLinePostbackContext(params: {
 
   const ctxPayload = finalizeInboundContext({
     Body: body,
+    BodyForAgent: rawBody,
     RawBody: rawBody,
     CommandBody: rawBody,
     From: fromAddress,

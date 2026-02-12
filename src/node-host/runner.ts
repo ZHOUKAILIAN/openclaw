@@ -1,9 +1,18 @@
-import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
-
+import { resolveAgentConfig } from "../agents/agent-scope.js";
+import { resolveBrowserConfig } from "../browser/config.js";
+import {
+  createBrowserControlContext,
+  startBrowserControlServiceFromConfig,
+} from "../browser/control-service.js";
+import { createBrowserRouteDispatcher } from "../browser/routes/dispatcher.js";
+import { loadConfig } from "../config/config.js";
+import { GatewayClient } from "../gateway/client.js";
+import { loadOrCreateDeviceIdentity } from "../infra/device-identity.js";
 import {
   addAllowlistEntry,
   analyzeArgvCommand,
@@ -31,22 +40,12 @@ import {
   type ExecHostRunResult,
 } from "../infra/exec-host.js";
 import { getMachineDisplayName } from "../infra/machine-name.js";
-import { loadOrCreateDeviceIdentity } from "../infra/device-identity.js";
-import { loadConfig } from "../config/config.js";
-import { resolveBrowserConfig } from "../browser/config.js";
-import {
-  createBrowserControlContext,
-  startBrowserControlServiceFromConfig,
-} from "../browser/control-service.js";
-import { createBrowserRouteDispatcher } from "../browser/routes/dispatcher.js";
-import { detectMime } from "../media/mime.js";
-import { resolveAgentConfig } from "../agents/agent-scope.js";
 import { ensureOpenClawCliOnPath } from "../infra/path-env.js";
-import { VERSION } from "../version.js";
+import { detectMime } from "../media/mime.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
-
+import { VERSION } from "../version.js";
 import { ensureNodeHostConfig, saveNodeHostConfig, type NodeHostGatewayConfig } from "./config.js";
-import { GatewayClient } from "../gateway/client.js";
+import { withTimeout } from "./with-timeout.js";
 
 type NodeHostRunOptions = {
   gatewayHost: string;
@@ -119,6 +118,15 @@ type RunResult = {
 
 function resolveExecSecurity(value?: string): ExecSecurity {
   return value === "deny" || value === "allowlist" || value === "full" ? value : "allowlist";
+}
+
+function isCmdExeInvocation(argv: string[]): boolean {
+  const token = argv[0]?.trim();
+  if (!token) {
+    return false;
+  }
+  const base = path.win32.basename(token).toLowerCase();
+  return base === "cmd.exe" || base === "cmd";
 }
 
 function resolveExecAsk(value?: string): ExecAsk {
@@ -266,29 +274,6 @@ async function ensureBrowserControlService(): Promise<void> {
     }
   })();
   return browserControlReady;
-}
-
-async function withTimeout<T>(promise: Promise<T>, timeoutMs?: number, label?: string): Promise<T> {
-  const resolved =
-    typeof timeoutMs === "number" && Number.isFinite(timeoutMs)
-      ? Math.max(1, Math.floor(timeoutMs))
-      : undefined;
-  if (!resolved) {
-    return await promise;
-  }
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      reject(new Error(`${label ?? "request"} timed out`));
-    }, resolved);
-  });
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
 }
 
 function isProfileAllowed(params: { allowProfiles: string[]; profile?: string | null }) {
@@ -783,12 +768,14 @@ async function handleInvoke(
       }
       const dispatcher = createBrowserRouteDispatcher(createBrowserControlContext());
       const response = await withTimeout(
-        dispatcher.dispatch({
-          method: method === "DELETE" ? "DELETE" : method === "POST" ? "POST" : "GET",
-          path,
-          query,
-          body,
-        }),
+        (signal) =>
+          dispatcher.dispatch({
+            method: method === "DELETE" ? "DELETE" : method === "POST" ? "POST" : "GET",
+            path,
+            query,
+            body,
+            signal,
+          }),
         params.timeoutMs,
         "browser proxy request",
       );
@@ -908,6 +895,7 @@ async function handleInvoke(
       env,
       skillBins: bins,
       autoAllowSkills,
+      platform: process.platform,
     });
     analysisOk = allowlistEval.analysisOk;
     allowlistMatches = allowlistEval.allowlistMatches;
@@ -929,6 +917,14 @@ async function handleInvoke(
     allowlistSatisfied =
       security === "allowlist" && analysisOk ? allowlistEval.allowlistSatisfied : false;
     segments = analysis.segments;
+  }
+  const isWindows = process.platform === "win32";
+  const cmdInvocation = rawCommand
+    ? isCmdExeInvocation(segments[0]?.argv ?? [])
+    : isCmdExeInvocation(argv);
+  if (security === "allowlist" && isWindows && cmdInvocation) {
+    analysisOk = false;
+    allowlistSatisfied = false;
   }
 
   const useMacAppExec = process.platform === "darwin";
@@ -1129,8 +1125,23 @@ async function handleInvoke(
     return;
   }
 
+  let execArgv = argv;
+  if (
+    security === "allowlist" &&
+    isWindows &&
+    !approvedByAsk &&
+    rawCommand &&
+    analysisOk &&
+    allowlistSatisfied &&
+    segments.length === 1 &&
+    segments[0]?.argv.length > 0
+  ) {
+    // Avoid cmd.exe in allowlist mode on Windows; run the parsed argv directly.
+    execArgv = segments[0].argv;
+  }
+
   const result = await runCommand(
-    argv,
+    execArgv,
     params.cwd?.trim() || undefined,
     env,
     params.timeoutMs ?? undefined,
